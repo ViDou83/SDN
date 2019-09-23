@@ -16,6 +16,15 @@
 
     LocalAdminDomainUser = "SDN\administrator"
 
+    DCs                  = 
+    @(
+        @{
+            ComputerName = 'SDN-DC1'; 
+            NICs         = @( 
+                @{ Name = "MGMT"; IPAddress = '10.184.108.1/24'; Gateway = ''; DNS = @("10.184.108.1") ; VLANID = 7 };
+            )   
+        }
+    )
 
     HyperVHosts = 
     @(
@@ -33,7 +42,6 @@
         }
     )
 
-
     S2DDiskSize     = 128GB
     S2DDiskNumber   = 3
     S2DClusterIP    = "10.184.108.4"
@@ -48,6 +56,8 @@
     # If not specified a default of 8 procs and 8GB RAM are used.
     VMMemory = 24GB
     VMProcessorCount = 4
+    MEM_DC = 2GB                                     # Memory provided for the Domain Controller VM
+
 
     SwitchName           = "SDN"
 

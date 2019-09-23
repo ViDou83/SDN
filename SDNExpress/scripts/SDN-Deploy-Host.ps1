@@ -84,6 +84,7 @@ $DomainJoinUserNameName = $ConfigData.DomainJoinUserName.Split("\")[1]
 $LocalAdminDomainUserDomain = $ConfigData.LocalAdminDomainUser.Split("\")[0]
 $LocalAdminDomainUserName = $ConfigData.LocalAdminDomainUser.Split("\")[1]
 
+
 if ( $null -eq $ConfigData.VMProcessorCount) { $ConfigData.VMProcessorCount = 2 }
 if ( $null -eq $ConfigData.VMMemory) { $ConfigData.VMMemory = 4GB }
 
@@ -109,12 +110,45 @@ $params = @{
     'ProductKey'          = $ConfigData.ProductKey;
 }
 
+#Creating DC
+foreach ( $dc in $configdata.DCs) {
+    $params.VMName = $dc.ComputerName
+    $params.Nics = $dc.NICs
+    $params.VMMemory = "2GB"
+    $params.VMProcessorCount = 2
+
+    Write-Host -ForegroundColor Green "Step 1 - Creating DC VM $($dc.ComputerName)" 
+    New-VM @params 
+
+    $password = $LocalAdminPassword | ConvertTo-SecureString -asPlainText -Force
+    $LocalAdminCredential = New-Object System.Management.Automation.PSCredential(".\administrator", $password)
+
+    $params = @{
+        DomainName                    = $ConfigData.DomainFQDN
+        DomainMode                    = 'WinThreshold'
+        DatabasePath                  = "C:\Domain"
+        DomainNetBiosName             = $($ConfigData.DomainFQDN).split(".")[0]
+        SafeModeAdministratorPassword = $password
+    }
+
+    while ((Invoke-Command -VMName $dc.computername -Credential $using:password { "Test" } `
+                    -ea SilentlyContinue) -ne "Test") {Start-Sleep -Seconds 1}
+
+    Install-ADDSForest  @params -InstallDns -Confirm -Force -NoRebootOnCompletion | Out-Null
+}
+
+#Creating HYPV Hosts
 foreach ( $node in $configdata.HyperVHosts) {
     $params.VMName = $node.ComputerName
     $params.Nics = $node.NICs
 
     Write-Host -ForegroundColor Green "Step 1 - Creating Host VM $($node.ComputerName)" 
-    New-NestedHost @params
+    New-VM @params
+
+    #required for nested virtualization 
+    Get-VM -Name $node.ComputerName | Set-VMProcessor -ExposeVirtualizationExtensions $true | out-null
+    #Required to allow multiple MAC per vNIC
+    Get-VM -Name $node.ComputerName | Get-VMNetworkAdapter | Set-VMNetworkAdapter -MacAddressSpoofing On
 
     $password = $LocalAdminPassword | ConvertTo-SecureString -asPlainText -Force
     $LocalAdminCredential = New-Object System.Management.Automation.PSCredential(".\administrator", $password)

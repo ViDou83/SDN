@@ -140,6 +140,25 @@ function Add-UnattendFileToVHD {
 "@
     }
 
+    
+    $UnattendedJoin = @"
+                    <component name="Microsoft-Windows-UnattendedJoin" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+                <Identification>
+                    <Credentials>
+                        <Domain>$CredentialDomain</Domain>
+                        <Password>$CredentialPassword</Password>
+                        <Username>$CredentialUsername</Username>
+                    </Credentials>
+                    <JoinDomain>$DomainFQDN</JoinDomain>
+                </Identification>
+            </component>    
+"@
+
+
+    if ( $ComputerName -match "DC" ){
+        $UnattendedJoin = $null
+    }
+
     $UnattendFile = @"
 <?xml version="1.0" encoding="utf-8"?>
     <unattend xmlns="urn:schemas-microsoft-com:unattend">
@@ -176,16 +195,7 @@ function Add-UnattendFileToVHD {
                      $DNSInterfaces
                 </Interfaces>
             </component>
-            <component name="Microsoft-Windows-UnattendedJoin" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-                <Identification>
-                    <Credentials>
-                        <Domain>$CredentialDomain</Domain>
-                        <Password>$CredentialPassword</Password>
-                        <Username>$CredentialUsername</Username>
-                    </Credentials>
-                    <JoinDomain>$DomainFQDN</JoinDomain>
-                </Identification>
-            </component>
+            $UnattendedJoin
         </settings>
         <settings pass="oobeSystem">
             <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -228,7 +238,7 @@ function Add-UnattendFileToVHD {
     Remove-Item $MountPath -Recurse -Force
 }
     
-function New-NestedHost() {
+function New-VM() {
     param(
         [String] $VMLocation,
         [String] $VMName,
@@ -286,8 +296,70 @@ function New-NestedHost() {
 
         $NewVM = New-VM -Generation 2 -Name $VMName -Path $CurrentVMLocationPath -MemoryStartupBytes $VMMemory -VHDPath $VHDOsFile -SwitchName $SwitchName
         $NewVM | Set-VM -processorcount $VMProcessorCount | out-null
-        #required for nested virtualization 
-        $NewVM | Set-VMProcessor -ExposeVirtualizationExtensions $true | out-null
+
+        $NewVM | Get-VMNetworkAdapter | Set-VMNetworkAdapterVlan -Access -VlanId $Nics[0].VLANID
+    } 
+}
+
+   
+function New-DC() {
+    param(
+        [String] $VMLocation,
+        [String] $VMName,
+        [String] $VHDSrcPath,
+        [String] $VHDName,
+        [Int64] $VMMemory,
+        [int] $VMProcessorCount,
+        [String] $SwitchName = "",
+        [Object] $Nics,
+        [String] $CredentialDomain,
+        [String] $CredentialUserName,
+        [String] $CredentialPassword,
+        [String] $JoinDomain,
+        [String] $LocalAdminPassword,
+        [String] $DomainAdminDomain,
+        [String] $DomainAdminUserName,
+        [String] $ProductKey = "",
+        [String] $Locale = [System.Globalization.CultureInfo]::CurrentCulture.Name,
+        [String] $TimeZone = [TimeZoneInfo]::Local.Id,
+        [String] $DomainFQDN
+    )
+    
+    $CurrentVMLocationPath = "$VMLocation\$VMName"
+    $VHDTemplateFile = "$VHDSrcPath\$VHDName"
+
+    if ( !(Test-Path $CurrentVMLocationPath) ) {  
+        Write-Host -ForegroundColor Yellow "Creating folder $CurrentVMLocationPath"
+        New-Item -ItemType Directory $CurrentVMLocationPath | Out-null
+    }
+
+    Write-Host "Copying VHD template $VHDTemplateFile to $CurrentVMLocationPath"
+    Copy-Item -Path $VHDTemplateFile -Destination $CurrentVMLocationPath -Recurse -Force | Out-Null
+    
+    $params = @{
+        'VHD'                = "$CurrentVMLocationPath\$VHDName";
+        'ProductKey'         = $ProductKey;
+        'IpGwAddr'           = $IpGwAddr;
+        'DomainJoin'         = $JoinDomain;
+        'ComputerName'       = $VMName;
+        'KeyboardLayout'     = 'fr-fr';
+        'DomainFDQN'         = $DomainFQDN;
+        'CredentialDomain'   = $CredentialDomain;
+        'CredentialPassword' = $CredentialPassword;
+        'CredentialUsername' = $CredentialUserName;
+        'LocalAdminPassword' = $LocalAdminPassword;
+        'NICS'               = $Nics;
+    }
+
+    Add-UnattendFileToVHD @params
+    
+    if ( Test-Path $CurrentVMLocationPath) {
+        Write-Host "Creating VM $VMName"
+
+        $VHDOsFile = $(Get-Item $CurrentVMLocationPath\*.vhdx).FullName
+
+        $NewVM = New-VM -Generation 2 -Name $VMName -Path $CurrentVMLocationPath -MemoryStartupBytes $VMMemory -VHDPath $VHDOsFile -SwitchName $SwitchName
+        $NewVM | Set-VM -processorcount $VMProcessorCount | out-null
         #Required to allow multiple MAC per vNIC
         $NewVM | Get-VMNetworkAdapter | Set-VMNetworkAdapter -MacAddressSpoofing On
         
@@ -398,4 +470,4 @@ function New-SDNS2DCluster {
         Set-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Services\spaceport\Parameters -Name HwTimeout -Value 0x00007530
     } | Out-Null
 
-} 
+}
