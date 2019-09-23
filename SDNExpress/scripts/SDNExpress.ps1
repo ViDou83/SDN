@@ -85,7 +85,6 @@ if ($psCmdlet.ParameterSetName -eq "NoParameters") {
         # user cancelled
         exit
     }
-
 } elseif ($psCmdlet.ParameterSetName -eq "ConfigurationFile") {
     write-sdnexpresslog "Using configuration file passed in by parameter."    
     $configdata = [hashtable] (iex (gc $ConfigurationDataFile | out-string))
