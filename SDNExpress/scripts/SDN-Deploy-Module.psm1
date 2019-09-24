@@ -8,26 +8,26 @@ function GetPassword {
 
    
     if ([String]::IsNullOrEmpty($SecurePasswordText) -and ($Credential -eq $null)) {
-        write-sdnexpresslog "No credentials found on command line or in config file.  Prompting."    
+        Write-Host "No credentials found on command line or in config file.  Prompting."    
         $Credential = get-Credential -Message $Message -UserName $UserName
     }
 
     if ($Credential -ne $null) {
-        write-sdnexpresslog "Using credentials from the command line."    
+        write-Host "Using credentials from the command line."    
         return $Credential.GetNetworkCredential().Password
     }
 
     try {
-        write-sdnexpresslog "Using credentials from config file."    
+        write-Host "Using credentials from config file."    
         $securepassword = $SecurePasswordText | convertto-securestring -erroraction Ignore
         $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecurePassword)
         return [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
     }
     catch {
-        write-sdnexpresslog "Unable to decrpypt credentials in config file.  Could be from a different user or generated on different computer.  Prompting instead."    
+        write-Host "Unable to decrpypt credentials in config file.  Could be from a different user or generated on different computer.  Prompting instead."    
         $Credential = get-Credential -Message $Message -UserName $UserName
         if ($credential -eq $null) {
-            write-sdnexpresslog "User cancelled credential input.  Exiting."    
+            write-Host "User cancelled credential input.  Exiting."    
             exit
         }
         return $Credential.GetNetworkCredential().Password
@@ -238,7 +238,7 @@ function Add-UnattendFileToVHD {
     Remove-Item $MountPath -Recurse -Force
 }
     
-function New-VM() {
+function New-SdnVM() {
     param(
         [String] $VMLocation,
         [String] $VMName,
@@ -298,73 +298,6 @@ function New-VM() {
         $NewVM | Set-VM -processorcount $VMProcessorCount | out-null
 
         $NewVM | Get-VMNetworkAdapter | Set-VMNetworkAdapterVlan -Access -VlanId $Nics[0].VLANID
-    } 
-}
-
-   
-function New-DC() {
-    param(
-        [String] $VMLocation,
-        [String] $VMName,
-        [String] $VHDSrcPath,
-        [String] $VHDName,
-        [Int64] $VMMemory,
-        [int] $VMProcessorCount,
-        [String] $SwitchName = "",
-        [Object] $Nics,
-        [String] $CredentialDomain,
-        [String] $CredentialUserName,
-        [String] $CredentialPassword,
-        [String] $JoinDomain,
-        [String] $LocalAdminPassword,
-        [String] $DomainAdminDomain,
-        [String] $DomainAdminUserName,
-        [String] $ProductKey = "",
-        [String] $Locale = [System.Globalization.CultureInfo]::CurrentCulture.Name,
-        [String] $TimeZone = [TimeZoneInfo]::Local.Id,
-        [String] $DomainFQDN
-    )
-    
-    $CurrentVMLocationPath = "$VMLocation\$VMName"
-    $VHDTemplateFile = "$VHDSrcPath\$VHDName"
-
-    if ( !(Test-Path $CurrentVMLocationPath) ) {  
-        Write-Host -ForegroundColor Yellow "Creating folder $CurrentVMLocationPath"
-        New-Item -ItemType Directory $CurrentVMLocationPath | Out-null
-    }
-
-    Write-Host "Copying VHD template $VHDTemplateFile to $CurrentVMLocationPath"
-    Copy-Item -Path $VHDTemplateFile -Destination $CurrentVMLocationPath -Recurse -Force | Out-Null
-    
-    $params = @{
-        'VHD'                = "$CurrentVMLocationPath\$VHDName";
-        'ProductKey'         = $ProductKey;
-        'IpGwAddr'           = $IpGwAddr;
-        'DomainJoin'         = $JoinDomain;
-        'ComputerName'       = $VMName;
-        'KeyboardLayout'     = 'fr-fr';
-        'DomainFDQN'         = $DomainFQDN;
-        'CredentialDomain'   = $CredentialDomain;
-        'CredentialPassword' = $CredentialPassword;
-        'CredentialUsername' = $CredentialUserName;
-        'LocalAdminPassword' = $LocalAdminPassword;
-        'NICS'               = $Nics;
-    }
-
-    Add-UnattendFileToVHD @params
-    
-    if ( Test-Path $CurrentVMLocationPath) {
-        Write-Host "Creating VM $VMName"
-
-        $VHDOsFile = $(Get-Item $CurrentVMLocationPath\*.vhdx).FullName
-
-        $NewVM = New-VM -Generation 2 -Name $VMName -Path $CurrentVMLocationPath -MemoryStartupBytes $VMMemory -VHDPath $VHDOsFile -SwitchName $SwitchName
-        $NewVM | Set-VM -processorcount $VMProcessorCount | out-null
-        #Required to allow multiple MAC per vNIC
-        $NewVM | Get-VMNetworkAdapter | Set-VMNetworkAdapter -MacAddressSpoofing On
-        
-        $NewVM | Get-VMNetworkAdapter | Set-VMNetworkAdapterVlan -Access -VlanId $Nics[0].VLANID
-   
     } 
 }
 
