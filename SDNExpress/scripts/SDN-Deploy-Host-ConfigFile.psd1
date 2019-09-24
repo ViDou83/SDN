@@ -13,7 +13,6 @@
     ManagementVLANID = 7
 
     DomainJoinUsername = "SDN\administrator"
-
     LocalAdminDomainUser = "SDN\administrator"
 
     DCs                  = 

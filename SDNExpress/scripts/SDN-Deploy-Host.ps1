@@ -110,15 +110,30 @@ $params = @{
     'ProductKey'          = $ConfigData.ProductKey;
 }
 
+#Checking VMSwitch
+$vmswitch = get-vmswitch
+if ( $null -eq $vmswitch ) {
+    throw "No virtual switch found on this host.  Please create the virtual switch before adding this host."
+}    
+
+if ( $vmswitch.name | Where-Object { -Name $params.SwitchName } ) { 
+    Write-Host -ForegroundColor Green "VMSwitch $($params.SwitchName) found"
+}
+else {
+    throw "No virtual switch $($params.SwitchName) found on this host.  Please create the virtual switch before adding this host."    
+}
+
+
 #Creating DC
 foreach ( $dc in $configdata.DCs) {
     $params.VMName = $dc.ComputerName
     $params.Nics = $dc.NICs
-    $params.VMMemory = "2GB"
+    $params.VMMemory = 2GB
     $params.VMProcessorCount = 2
+    $params.VHDName = "Win2019-GUI.vhdx"
 
     Write-Host -ForegroundColor Green "Step 1 - Creating DC VM $($dc.ComputerName)" 
-    New-VM @params 
+    New-SdnVM @params 
 
     $password = $LocalAdminPassword | ConvertTo-SecureString -asPlainText -Force
     $LocalAdminCredential = New-Object System.Management.Automation.PSCredential(".\administrator", $password)
@@ -131,8 +146,8 @@ foreach ( $dc in $configdata.DCs) {
         SafeModeAdministratorPassword = $password
     }
 
-    while ((Invoke-Command -VMName $dc.computername -Credential $using:password { "Test" } `
-                    -ea SilentlyContinue) -ne "Test") {Start-Sleep -Seconds 1}
+    while ((Invoke-Command -VMName $dc.ComputerName -Credential $LocalAdminCredential { "Test" } `
+                -ea SilentlyContinue) -ne "Test") { Start-Sleep -Seconds 1 }
 
     Install-ADDSForest  @params -InstallDns -Confirm -Force -NoRebootOnCompletion | Out-Null
 }
@@ -143,7 +158,7 @@ foreach ( $node in $configdata.HyperVHosts) {
     $params.Nics = $node.NICs
 
     Write-Host -ForegroundColor Green "Step 1 - Creating Host VM $($node.ComputerName)" 
-    New-VM @params
+    New-SdnVM @params
 
     #required for nested virtualization 
     Get-VM -Name $node.ComputerName | Set-VMProcessor -ExposeVirtualizationExtensions $true | out-null
