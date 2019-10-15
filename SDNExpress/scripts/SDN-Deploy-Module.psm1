@@ -1,37 +1,12 @@
-function GetPassword {
+function GetCred {
     param(
         [String] $SecurePasswordText,
         [PSCredential] $Credential,
         [String] $Message,
         [String] $UserName
     )
-
-   
-    if ([String]::IsNullOrEmpty($SecurePasswordText) -and ($Credential -eq $null)) {
-        Write-Host "No credentials found on command line or in config file.  Prompting."    
-        $Credential = get-Credential -Message $Message -UserName $UserName
-    }
-
-    if ($Credential -ne $null) {
         write-Host "Using credentials from the command line."    
-        return $Credential.GetNetworkCredential().Password
-    }
-
-    try {
-        write-Host "Using credentials from config file."    
-        $securepassword = $SecurePasswordText | convertto-securestring -erroraction Ignore
-        $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecurePassword)
-        return [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
-    }
-    catch {
-        write-Host "Unable to decrpypt credentials in config file.  Could be from a different user or generated on different computer.  Prompting instead."    
-        $Credential = get-Credential -Message $Message -UserName $UserName
-        if ($credential -eq $null) {
-            write-Host "User cancelled credential input.  Exiting."    
-            exit
-        }
-        return $Credential.GetNetworkCredential().Password
-    }
+        return  get-Credential -Message $Message -UserName $UserName
 }
 
 function Add-UnattendFileToVHD {
