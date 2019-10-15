@@ -18,7 +18,7 @@
     DCs                  = 
     @(
         @{
-            ComputerName = 'SDN-DC1'; 
+            ComputerName = 'SDN-DC01'; 
             NICs         = @( 
                 @{ Name = "MGMT"; IPAddress = '10.184.108.1/24'; Gateway = ''; DNS = @("10.184.108.1") ; VLANID = 7 };
             )   
@@ -41,6 +41,21 @@
         }
     )
 
+    GWs          = 
+    @(
+        @{
+            ComputerName = 'SDN-HOST01'; 
+            NICs         = @( 
+                @{ Name = "MGMT"; IPAddress = '10.184.108.2/24'; Gateway = '10.184.108.1'; DNS = @("10.184.108.1") ; VLANID = 7 };
+            )   
+        },   
+        @{
+            ComputerName = 'SDN-HOST02'; 
+            NICs         = @( 
+                @{ Name = "MGMT"; IPAddress = '10.184.108.3/24'; Gateway = '10.184.108.1'; DNS = @("10.184.108.1") ; VLANID = 7 };
+            )   
+        }
+    )
     S2DDiskSize     = 128GB
     S2DDiskNumber   = 3
     S2DClusterIP    = "10.184.108.4"

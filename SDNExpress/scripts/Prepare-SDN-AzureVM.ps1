@@ -9,5 +9,8 @@ $virtualDisk = new-VirtualDisk –StoragePoolFriendlyName $StoragePool.FriendlyN
 
 Get-VirtualDisk –FriendlyName $virtualDisk.FriendlyName | Get-Disk | Initialize-Disk –Passthru | New-Partition –AssignDriveLetter –UseMaximumSize | Format-Volume
 
+
+Set-Item WSMan:\localhost\Client\TrustedHosts -Value "*.sdn.lab" -Force
+
 #Install HYPV
 Install-WindowsFeature -Name Hyper-V -IncludeManagementTools -Restart
