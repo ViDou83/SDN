@@ -292,7 +292,7 @@ foreach ($TenantVM in $configdata.TenantVMs) {
     $params.NICs = $TenantVM.NICs
     $params.DnsIpAddr = $TenantVM.NICs[0].DNS
     
-    $vm = Get-VM -ComputerName $TenantVM.HypvHostname $TenantVM.ComputerName | Out-Null
+    $vm = Get-VM -ComputerName $ConfigData.HYPV | ? Name -eq $TenantVM.ComputerName
 
     $VMPath = $VMLocation
 
@@ -383,70 +383,68 @@ foreach ($TenantVM in $configdata.TenantVMs) {
         $vm = New-VM -ComputerName $TenantVM.HypvHostname -Generation 2 -Name $VMName -Path $VMPath -MemoryStartupBytes $VMMemory `
                     -VHDPath $LocalVHDPath -SwitchName $SwitchName
         $vm | Set-VM -processorcount $VMProcessorCount | out-null
+        #Attaching to the tenant VNET
+        foreach ( $NIC in $TenantVM.NICs) {
+            $vm | Stop-VM -Force
 
+            $vmnicproperties = new-object Microsoft.Windows.NetworkController.NetworkInterfaceProperties
+            $vmnicproperties.PrivateMacAllocationMethod = "Dynamic"
+            
+            $vmnicproperties.IsPrimary = $true 
+
+            $vmnicproperties.DnsSettings = new-object Microsoft.Windows.NetworkController.NetworkInterfaceDnsSettings
+            $vmnicproperties.DnsSettings.DnsServers = $TenantVM.NICs[0].DNS
+
+            $ipconfiguration = new-object Microsoft.Windows.NetworkController.NetworkInterfaceIpConfiguration
+            $ipconfiguration.resourceid = "$($TenantVM.ComputerName)_IP1"
+            $ipconfiguration.properties = new-object Microsoft.Windows.NetworkController.NetworkInterfaceIpConfigurationProperties
+            $ipconfiguration.properties.PrivateIPAddress = ($NIC.IPAddress).split("/")[0]
+            $ipconfiguration.properties.PrivateIPAllocationMethod = "Static"
+
+            $ipconfiguration.properties.Subnet = new-object Microsoft.Windows.NetworkController.Subnet
+            $ipconfiguration.properties.subnet.ResourceRef = $vnet.Properties.Subnets[0].ResourceRef
+
+            $vmnicproperties.IpConfigurations = @($ipconfiguration)
+            $nic = Invoke-Command { 
+                $ipconfiguration = $args[0]; $vmnicproperties = $args[1]; $uri = $args[2];
+                New-NetworkControllerNetworkInterface -ResourceID $ipconfiguration.resourceid -Properties $vmnicproperties `
+                    -ConnectionUri $uri -Force
+            } -ArgumentList $ipconfiguration, $vmnicproperties, $uri   
+            #Do not change the hardcoded IDs in this section, because they are fixed values and must not change.
+
+            $FeatureId = "9940cd46-8b06-43bb-b9d5-93d50381fd56"
+
+            $vmNics = $vm | Get-VMNetworkAdapter
+                
+            $CurrentFeature = Get-VMSwitchExtensionPortFeature -ComputerName $TenantVM.HypvHostname  -FeatureId $FeatureId -VMNetworkAdapter $vmNics 
+
+            if ($null -eq $CurrentFeature) {
+                $Feature = Get-VMSystemSwitchExtensionPortFeature -ComputerName $TenantVM.HypvHostname -FeatureId $FeatureId
+
+                $Feature.SettingData.ProfileId = "{$($nic.InstanceId)}"
+                $Feature.SettingData.NetCfgInstanceId = "{56785678-a0e5-4a26-bc9b-c0cba27311a3}"
+                $Feature.SettingData.CdnLabelString = "TestCdn"
+                $Feature.SettingData.CdnLabelId = 1111
+                $Feature.SettingData.ProfileName = "Testprofile"
+                $Feature.SettingData.VendorId = "{1FA41B39-B444-4E43-B35A-E1F7985FD548}"
+                $Feature.SettingData.VendorName = "NetworkController"
+                $Feature.SettingData.ProfileData = 1
+                        
+                Add-VMSwitchExtensionPortFeature -ComputerName $TenantVM.HypvHostname -VMSwitchExtensionFeature  $Feature -VMNetworkAdapter $vmNics 
+            }
+            else {
+                $CurrentFeature.SettingData.ProfileId = "{$($nic.InstanceId)}"
+                $CurrentFeature.SettingData.ProfileData = 1
+                    
+                Set-VMSwitchExtensionPortFeature -ComputerName $TenantVM.HypvHostname -VMSwitchExtensionFeature $CurrentFeature -VMNetworkAdapter $vmNics
+            }  
+            $vmNics | Set-VMNetworkAdapter -ComputerName $TenantVM.HypvHostname -StaticMacAddress $nic.properties.PrivateMacAddress
+        
+            $vm | Start-VM    
+        }
     }
     else {
-        Write-Host -ForegroundColor Yellow "VM $($TenantVM.ComputerName) already exist on $($TenantVM.HypvHostname)"                
-    }
-
-    #Attaching to the tenant VNET
-    foreach ( $NIC in $TenantVM.NICs) {
-        $vm | Stop-VM -Force
-
-        $vmnicproperties = new-object Microsoft.Windows.NetworkController.NetworkInterfaceProperties
-        $vmnicproperties.PrivateMacAllocationMethod = "Dynamic"
-            
-        $vmnicproperties.IsPrimary = $true 
-
-        $vmnicproperties.DnsSettings = new-object Microsoft.Windows.NetworkController.NetworkInterfaceDnsSettings
-        $vmnicproperties.DnsSettings.DnsServers = $TenantVM.NICs[0].DNS
-
-        $ipconfiguration = new-object Microsoft.Windows.NetworkController.NetworkInterfaceIpConfiguration
-        $ipconfiguration.resourceid = "$($TenantVM.ComputerName)_IP1"
-        $ipconfiguration.properties = new-object Microsoft.Windows.NetworkController.NetworkInterfaceIpConfigurationProperties
-        $ipconfiguration.properties.PrivateIPAddress = ($NIC.IPAddress).split("/")[0]
-        $ipconfiguration.properties.PrivateIPAllocationMethod = "Static"
-
-        $ipconfiguration.properties.Subnet = new-object Microsoft.Windows.NetworkController.Subnet
-        $ipconfiguration.properties.subnet.ResourceRef = $vnet.Properties.Subnets[0].ResourceRef
-
-        $vmnicproperties.IpConfigurations = @($ipconfiguration)
-        $nic = Invoke-Command { 
-            $ipconfiguration = $args[0]; $vmnicproperties = $args[1]; $uri = $args[2];
-            New-NetworkControllerNetworkInterface -ResourceID $ipconfiguration.resourceid -Properties $vmnicproperties `
-                -ConnectionUri $uri -Force
-        } -ArgumentList $ipconfiguration, $vmnicproperties, $uri   
-        #Do not change the hardcoded IDs in this section, because they are fixed values and must not change.
-
-        $FeatureId = "9940cd46-8b06-43bb-b9d5-93d50381fd56"
-
-        $vmNics = $vm | Get-VMNetworkAdapter
-                
-        $CurrentFeature = Get-VMSwitchExtensionPortFeature -ComputerName $TenantVM.HypvHostname  -FeatureId $FeatureId -VMNetworkAdapter $vmNics 
-
-        if ($null -eq $CurrentFeature) {
-            $Feature = Get-VMSystemSwitchExtensionPortFeature -ComputerName $TenantVM.HypvHostname -FeatureId $FeatureId
-
-            $Feature.SettingData.ProfileId = "{$($nic.InstanceId)}"
-            $Feature.SettingData.NetCfgInstanceId = "{56785678-a0e5-4a26-bc9b-c0cba27311a3}"
-            $Feature.SettingData.CdnLabelString = "TestCdn"
-            $Feature.SettingData.CdnLabelId = 1111
-            $Feature.SettingData.ProfileName = "Testprofile"
-            $Feature.SettingData.VendorId = "{1FA41B39-B444-4E43-B35A-E1F7985FD548}"
-            $Feature.SettingData.VendorName = "NetworkController"
-            $Feature.SettingData.ProfileData = 1
-                        
-            Add-VMSwitchExtensionPortFeature -ComputerName $TenantVM.HypvHostname -VMSwitchExtensionFeature  $Feature -VMNetworkAdapter $vmNics 
-        }
-        else {
-            $CurrentFeature.SettingData.ProfileId = "{$($nic.InstanceId)}"
-            $CurrentFeature.SettingData.ProfileData = 1
-                    
-            Set-VMSwitchExtensionPortFeature -ComputerName $TenantVM.HypvHostname -VMSwitchExtensionFeature $CurrentFeature -VMNetworkAdapter $vmNics
-        }  
-        $vmNics | Set-VMNetworkAdapter -ComputerName $TenantVM.HypvHostname -StaticMacAddress $nic.properties.PrivateMacAddress
-        
-        $vm | Start-VM    
+        Write-Host -ForegroundColor Yellow "VM $($TenantVM.ComputerName) already exist on $($vm.computername)"                
     }
     #Start-VM $TenantVM.ComputerName    
 }
