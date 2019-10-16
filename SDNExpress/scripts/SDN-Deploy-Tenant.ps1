@@ -285,7 +285,7 @@ $params = @{
 
 
 foreach ($TenantVM in $configdata.TenantVMs) {
-    Write-Host -ForegroundColor Yellow "Adding $($TenantVM.ComputerName) on $($TenantVM.HypvHostname) for $($Tenant.name)"
+    Write-Host -ForegroundColor Yellow "Adding VM=$($TenantVM.ComputerName) on HYPV=$($TenantVM.HypvHostname) for tenant=$($TenantVM.tenant)"
             
     $params.ComputerName = $TenantVM.HypvHostname
     $params.VMName = $TenantVM.ComputerName
@@ -345,8 +345,8 @@ foreach ($TenantVM in $configdata.TenantVMs) {
 
         if ([String]::IsNullOrEmpty($SwitchName)) {
             write-sdnexpresslog "Finding virtual switch."
-            $SwitchName = invoke-command -computername $computername {
-                $VMSwitches = Get-VMSwitch
+            $SwitchName = invoke-command -computername $TenantVM.HypvHostname {
+                $VMSwitches =  
                 if ($VMSwitches -eq $Null) {
                     throw "No Virtual Switches found on the host.  Can't create VM.  Please create a virtual switch before continuing."
                 }
@@ -362,7 +362,7 @@ foreach ($TenantVM in $configdata.TenantVMs) {
         if (!($IsLocal -or $IsCSV -or $IsSMB)) {
             write-sdnexpresslog "Creating VM root directory and share on host."
 
-            invoke-command -computername $computername {
+            invoke-command -computername $TenantVM.HypvHostname {
                 param(
                     [String] $VMLocation,
                     [String] $UserName
@@ -405,7 +405,7 @@ foreach ($TenantVM in $configdata.TenantVMs) {
             $ipconfiguration.properties.subnet.ResourceRef = $vnet.Properties.Subnets[0].ResourceRef
 
             $vmnicproperties.IpConfigurations = @($ipconfiguration)
-            $nic = Invoke-Command { 
+            $nic = Invoke-Command  $TenantVM.HypvHostname { 
                 $ipconfiguration = $args[0]; $vmnicproperties = $args[1]; $uri = $args[2];
                 New-NetworkControllerNetworkInterface -ResourceID $ipconfiguration.resourceid -Properties $vmnicproperties `
                     -ConnectionUri $uri -Force
