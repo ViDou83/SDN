@@ -98,7 +98,6 @@ Invoke-Command $ConfigData.HYPV[0] {
         $gwPool = Get-NetworkControllerGatewayPool -ConnectionUri $uri  
 
         foreach ($Gw in $configdata.TenantGWs) {    
-            " ? $($GW.Tenant) == $($Tenant.Name)" 
             if ( $Gw.Tenant -eq $Tenant.Name) { 
                 Write-Host -ForegroundColor Yellow "Configuring Virutal GW for $($Tenant.Name)"
             
@@ -124,7 +123,8 @@ Invoke-Command $ConfigData.HYPV[0] {
 
                 $VirtualGW
 
-                if ( $Gw.Type -eq "L3") {
+                if ( $Gw.Type -eq "L3") 
+                {
                     # Create a new object for the Logical Network to be used for L3 Forwarding  
                     $lnProperties = New-Object Microsoft.Windows.NetworkController.LogicalNetworkProperties  
 
@@ -142,7 +142,7 @@ Invoke-Command $ConfigData.HYPV[0] {
                     $lnProperties.Subnets += $logicalsubnet  
 
                     # Add the new Logical Network to Network Controller  
-                    $LogicalNetwork = Get-NetworkControllerLogicalNetwork -ConnectionUri $uri -ResourceId $Gw.LogicalNetworkName
+                    $LogicalNetwork = Get-NetworkControllerLogicalNetwork -ConnectionUri $uri | ? ResourceId -eq $Gw.LogicalNetworkName
                     
                     if ( $null -eq $LogicalNetwork) {
                         $LogicalNetwork = New-NetworkControllerLogicalNetwork -ConnectionUri $uri `
@@ -501,6 +501,19 @@ New-NetworkControllerNetworkInterface -ResourceId $nic1.ResourceId -Properties $
 $nic2 = Get-NetworkControllerNetworkInterface -ConnectionUri $Connectionuri -ResourceId "Contoso-TestVM02_IP1"
 $nic2.Properties.IpConfigurations[0].Properties.LoadBalancerBackendAddressPools += $lb.Properties.BackendAddressPools[0]
 New-NetworkControllerNetworkInterface -ResourceId $nic2.ResourceId -Properties $nic2.Properties -ConnectionUri $Connectionuri -Force  
+
+#To DELETE
+$NetConn = Get-NetworkControllerNetworkInterface -ConnectionUri https://NCFABRIC.SDN.LAB   | ? ResourceId -Match "Contoso|Fabrikam"
+$NetConn  | %{ Remove-NetworkControllerNetworkInterface -ConnectionUri https://NCFABRIC.SDN.LAB -ResourceId $_.ResourceId -Force}
+
+$vgw = Get-NetworkControllerVirtualGateway -ConnectionUri https://NCFABRIC.SDN.LAB
+$vgw | %{ Remove-NetworkControllerVirtualGateway -ConnectionUri https://NCFABRIC.SDN.LAB -ResourceId $_.ResourceId -Force }
+
+$LogNet = Get-NetworkControllerLogicalNetwork -ConnectionUri https://NCFABRIC.SDN.LAB   | ? ResourceId -Match "Contoso|Fabrikam"
+$LogNet | %{ Remove-NetworkControllerLogicalNetwork -ConnectionUri https://NCFABRIC.SDN.LAB -ResourceId $_.ResourceId -Force }
+
+$vNet = Get-NetworkControllerVirtualNetwork -ConnectionUri https://NCFABRIC.SDN.LAB   | ? ResourceId -Match "Contoso|Fabrikam"
+$vNet | %{ Remove-NetworkControllerVirtualNetwork -ConnectionUri https://NCFABRIC.SDN.LAB -ResourceId $_.ResourceId -Force }
 
 
 #>
